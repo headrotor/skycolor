@@ -13,7 +13,8 @@ import smbus
 
 # create a logfile with current date and time
 
-fname = "c" + datetime.datetime.now().strftime("%y-%m-%d-%I_%M_%S") + ".csv"
+dest = "./gain_4x/"
+fname = dest + "c" + datetime.datetime.now().strftime("%y-%m-%d-%I_%M") + ".csv"
 
 logfile = open(fname,"w")
 logfile.write('started ' + datetime.datetime.now().strftime("%y-%m-%d %I:%M:%S\n"))
@@ -28,10 +29,17 @@ print("log file: " + fname)
 # You can also override the I2C device address and/or bus with parameters:
 #tcs = Adafruit_TCS34725.TCS34725(address=0x30, busnum=2)
 
+#tcs = Adafruit_TCS34725.TCS34725(
+#    integration_time=Adafruit_TCS34725.TCS34725_INTEGRATIONTIME_154MS,
+#    gain=Adafruit_TCS34725.TCS34725_GAIN_1X)
+
+
 # Or you can change the integration time and/or gain:
 tcs = Adafruit_TCS34725.TCS34725(
     integration_time=Adafruit_TCS34725.TCS34725_INTEGRATIONTIME_154MS,
-    gain=Adafruit_TCS34725.TCS34725_GAIN_1X)
+    gain=Adafruit_TCS34725.TCS34725_GAIN_4X)
+
+
 # Possible integration time values:
 #  - TCS34725_INTEGRATIONTIME_2_4MS  (2.4ms, default)
 #  - TCS34725_INTEGRATIONTIME_24MS
