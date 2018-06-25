@@ -18,11 +18,14 @@ int nrgb =0;
 int[] Ra;
 int[] Ba;
 int[] Ga;
+float[] Rf;
+float[] Bf;
+float[] Gf;
 color[] rgbc;
 
 int loadrgb() {
 
-  rgbcols = loadTable("rgb.csv", "header");
+  rgbcols = loadTable("skycolors.csv", "header");
 
   println(rgbcols.getRowCount() + " total rows in table"); 
   nrgb = rgbcols.getRowCount();
@@ -46,15 +49,40 @@ int loadrgb() {
   return i;
 
 }
+int loadrgbf() {
+  // load floating point colormap 0 < rgb < 1.0
+  rgbcols = loadTable("skycolors.csv", "header");
 
+  println(rgbcols.getRowCount() + " total rows in table"); 
+  nrgb = rgbcols.getRowCount();
+  Rf = new float[nrgb];
+  Bf = new float[nrgb];
+  Gf = new float[nrgb];
+  rgbc = new color[nrgb];
+  int i =0;
+  for (TableRow row : rgbcols.rows()) {
+
+    Rf[i] = row.getFloat("R");
+    Gf[i] = row.getFloat("G");
+    Bf[i] = row.getFloat("B");
+
+    rgbc[i] = color(int(255*Rf[i]),int(255*Gf[i]),int(255*Bf[i]));
+    //String species = row.getString("species");
+    //String name = row.getString("name");
+    ++i;
+    //println(r + " found at " + row);
+  }
+  return i;
+
+}
 void setup() {
-  xdim = 200;
-  ydim = 200;
-  size(200, 200);
+  xdim = 1000;
+  ydim = 1000;
+  size(1000, 1000);
   noStroke();
   smooth();
   background(#2810B2);
-  nrgb = loadrgb();
+  nrgb = loadrgbf();
 
   if (makeGif) {
     gifExport = new GifMaker(this, "target1.gif");
@@ -91,8 +119,9 @@ void draw() {
     }
   }
 
-  if (ph > 0) {
+  if ((ph > 0) && (gifdone == false)) {
     gifdone = true;
+    save("colorround2.png");
   }
   if (!makeGif) {
     return;
@@ -111,10 +140,14 @@ void draw() {
 color cmap(float r, float th) {
   // color map for this channel given r, theta 
   float cval=0; // channel value
-  float index = map(r, 0, 500, 0, float(nrgb)); 
-  int i = int(round(index));
+  float index = map(r, 0, xdim/2, 0, float(nrgb)); 
+  //int i = 10000 - int(round(index));
+  int i =  int(round(index));
   if (i >= nrgb) {
     i = nrgb -1;
+  }  
+  if (i < 0) {
+    i = 0;
   }
   return rgbc[i];
 }
