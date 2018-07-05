@@ -8,24 +8,60 @@ import datetime
 
 # Import the TCS34725 module.
 import Adafruit_TCS34725
-import smbus
 
-bus = smbus.SMBus(1)
-bus.write_byte(0x70,0x00)
-chan = bus.read_byte(0x70)
+#if i2c is None:
+import Adafruit_GPIO.I2C as i2c
+#i2c = I2C
+
+#import smbus
+
+
+
+chan = 0xFF
+mplex = i2c.get_i2c_device(0x70,1)
+mplex.writeRaw8(0x02)
+#chan = mplex.readRawU8(0x00)
+chan = mplex.readRaw8()
 print chan
+
+
+#col = i2c.get_i2c_device(0x29, 1)
+#chip_id = col.readU8(Adafruit_TCS34725.TCS34725_ID)
+#print chip_id
+
+#while True:
+#    r = col.readU16LE(Adafruit_TCS34725.TCS34725_RDATAL)
+#    print r
+#    time.sleep(1)
+    
+#bus = smbus.SMBus(1)
+#bus.write_byte(0x70,0x00)
+#chan = bus.read_byte(0x70)
+
+
+#long read_byte_data(int addr,char cmd)
+#ID = bus.read_byte_data(0x29, 0x12)
+#bus.write_byte(0x29,0x12)
+#ID = bus.read_byte(0x29)
+
+#print ID
+
 print "OK!"
 
-class multiplex:
 
-    def __init__(self, bus=1):
-        self.bus = smbus.SMBus(bus)
-        self.chan = None
+
+
+
+# class multiplex:
+
+#     def __init__(self, bus=1):
+#         self.bus = smbus.SMBus(bus)
+#         self.chan = None
         
-    def set_channel(self, address=0x70,channel=0):  
-        self.bus.write_byte(address,channel)  
-        self.chan = self.bus.read_byte(0x70)
-        print self.chan
+#     def set_channel(self, address=0x70,channel=0):  
+#         self.bus.write_byte(address,channel)  
+#         self.chan = self.bus.read_byte(0x70)
+#         print self.chan
         
 # create a logfile with current date and time
 
@@ -83,7 +119,7 @@ while True:
     # Read the R, G, B, C color data.
 
     
-    mplex.set_channel(0x04)
+    #mplex.set_channel(0x04)
 
     r, g, b, c = tcs.get_raw_data()
 
