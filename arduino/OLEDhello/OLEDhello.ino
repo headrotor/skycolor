@@ -245,11 +245,17 @@ void initOLED(void) {
   //u8g2.drawStr(0, 17, "Hello World!");  // write something to the internal memory
   //u8g2.setDrawColor(1);
   //u8g2.drawBox(0, 0, u8g2.getDisplayHeight(), u8g2.getDisplayWidth());
-  u8g2.drawFrame(0, 0, u8g2.getDisplayHeight() - 1, u8g2.getDisplayWidth());
   u8g2.setContrast(128);
   u8g2.setFontMode(0);
   u8g2.setDrawColor(128);
   u8g2.drawStr(3, 15, "Color=1, Mode 0");
+  int dheight = 128; // u8g2.getDisplayHeight()
+  int dwidth = 95; // u8g2.getDisplayWidth()
+  u8g2.drawFrame(0, 0, dheight - 1, dwidth);
+  u8g2.drawFrame(5, 5, dheight - 11, dwidth-10);
+  u8g2.drawFrame(10, 10, dheight - 21, dwidth-20);
+  u8g2.drawFrame(15, 15, dheight - 31, dwidth-30);
+
     u8g2.setCursor(3, 75);
   u8g2.print("hello");
 
