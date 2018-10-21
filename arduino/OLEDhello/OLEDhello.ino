@@ -274,12 +274,14 @@ void initOLED(void) {
   // reset font mode and color
   u8g2.setFontMode(0);
   u8g2.setDrawColor(128);
+  Serial.begin(38400);
 }
 
 char ostr[32];
 
 void loop(void) {
   sprintf(ostr, "pos: %d", wheel.read());
+  Serial.println(ostr);
   u8g2.setCursor(3, 75);
   u8g2.print(ostr);
   u8g2.drawStr(3, 75, ostr );
