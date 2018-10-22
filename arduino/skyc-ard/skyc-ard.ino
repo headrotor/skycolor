@@ -58,7 +58,9 @@ Encoder wheel(2, 3);
 //U8G2_SSD1327_EA_W128128_F_4W_SW_SPI u8g2(U8G2_R0, /* clock=*/ 13, /* data=*/ 11, /* cs=*/ 10, /* dc=*/ 9, /* reset=*/ 8);
 
 //works 36-17 fps
-U8G2_SSD1327_EA_W128128_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ 10, /* dc=*/ 9, /* reset=*/ 8);
+//U8G2_SSD1327_EA_W128128_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ 10, /* dc=*/ 9, /* reset=*/ 8);
+//works
+U8G2_SSD1327_MIDAS_128X128_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ 10, /* dc=*/ 9, /* reset=*/ 8);
 
 // works ***************
 //U8X8_SSD1327_MIDAS_128X128_HW_I2C u8x8(U8X8_PIN_NONE);
@@ -75,11 +77,13 @@ U8G2_SSD1327_EA_W128128_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ 10, /* dc=*/ 9, /* re
 
 FASTLED_USING_NAMESPACE
 
-#define DATA_PIN    4
+#define DATA_PIN    5
 //#define CLK_PIN   4
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
-#define NUM_LEDS    64
+#define NUM_LEDS    (32+24+16+12 +8 + 1 + 10)
+//#define NUM_LEDS    32
+
 CRGB leds[NUM_LEDS];
 
 #define BRIGHTNESS          96
@@ -91,18 +95,19 @@ CRGB leds[NUM_LEDS];
 void setup(void) {
   u8g2.begin();
   delay(3000); // 3 second delay for recovery
-  
+
   // tell FastLED about the LED strip configuration
-  FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   //FastLED.addLeds<LED_TYPE,DATA_PIN,CLK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
 
   // set master brightness control
   FastLED.setBrightness(BRIGHTNESS);
-  
+  Serial.begin(38400);
+
   initOLED();
 }
 
-void initOLED(void) {
+void initOLEDOLD(void) {
   u8g2.clearBuffer();          // clear the internal memory
   u8g2.setFont(u8g2_font_profont15_tf);  // choose a suitable font
   //u8g2.setFont(u8g2_font_ncenB08_tr);  // choose a suitable font
@@ -116,16 +121,16 @@ void initOLED(void) {
   int dheight = 128; // u8g2.getDisplayHeight()
   int dwidth = 95; // u8g2.getDisplayWidth()
   u8g2.drawFrame(0, 0, dheight - 1, dwidth);
-  u8g2.drawFrame(5, 5, dheight - 11, dwidth-10);
-  u8g2.drawFrame(10, 10, dheight - 21, dwidth-20);
-  u8g2.drawFrame(15, 15, dheight - 31, dwidth-30);
+  u8g2.drawFrame(5, 5, dheight - 11, dwidth - 10);
+  u8g2.drawFrame(10, 10, dheight - 21, dwidth - 20);
+  u8g2.drawFrame(15, 15, dheight - 31, dwidth - 30);
 
-    u8g2.setCursor(3, 75);
+  u8g2.setCursor(3, 75);
   u8g2.print("hello");
 
   u8g2.setDrawColor(0);
 
-  
+
   u8g2.setContrast(255);
   u8g2.drawStr(3, 30, "Color=0, Mode 0");
   u8g2.setFontMode(1);
@@ -137,8 +142,28 @@ void initOLED(void) {
 
   // reset font mode and color
   u8g2.setFontMode(0);
-  u8g2.setDrawColor(128);
-  Serial.begin(38400);
+  u8g2.setDrawColor(255);
+}
+
+void initOLED(void) {
+  u8g2.clearBuffer();          // clear the internal memory
+  u8g2.setFont(u8g2_font_profont15_tf);  // choose a suitable font
+  //u8g2.setFont(u8g2_font_ncenB08_tr);  // choose a suitable font
+  //u8g2.drawStr(0, 17, "Hello World!");  // write something to the internal memory
+  //u8g2.setDrawColor(1);
+  //u8g2.drawBox(0, 0, u8g2.getDisplayHeight(), u8g2.getDisplayWidth());
+  u8g2.setContrast(255);
+  //u8g2.setDrawColor(255);
+  u8g2.drawStr(3, 15, "Color=1, Mode 0");
+  int dheight =  u8g2.getDisplayHeight();
+  int dwidth =  u8g2.getDisplayWidth();
+  u8g2.drawFrame(0, 0, dwidth-1, dheight - 1 );  
+  u8g2.drawFrame(0, 0, dwidth-1, dheight - 10 );
+  u8g2.drawFrame(0, 0, dwidth-1, 96 );
+
+  u8g2.setCursor(3, 75);
+  u8g2.print("hello");
+  u8g2.sendBuffer();          // transfer internal memory to the display
 }
 
 char ostr[32];
@@ -148,9 +173,13 @@ void loop(void) {
 
   int hue = (wheel.read() >> 8) & 255;
   Serial.println(hue);
-  FastLED.showColor(CHSV(hue, 255, 255)); 
+  FastLED.showColor(CHSV(hue, 255, 255));
   u8g2.setCursor(3, 75);
+    u8g2.setDrawColor(255);
   u8g2.print(ostr);
+  u8g2.setContrast(255);
   u8g2.drawStr(3, 75, ostr );
+
   u8g2.sendBuffer();          // transfer internal memory to the display
+  //delay(100);
 }
