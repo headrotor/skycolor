@@ -1,46 +1,73 @@
-/*
 
-  HelloWorld.ino
 
-  Universal 8bit Graphics Library (https://github.com/olikraus/u8g2/)
+/* skycolor (c) Jon Foote 2018
+    Driver for Stochastic Labs light work
+*/
 
-  Copyright (c) 2016, olikraus@gmail.com
-  All rights reserved.
 
-  Redistribution and use in source and binary forms, with or without modification,
-  are permitted provided that the following conditions are met:
-
-    Redistributions of source code must retain the above copyright notice, this list
-    of conditions and the following disclaimer.
-
-    Redistributions in binary form must reproduce the above copyright notice, this
-    list of conditions and the following disclaimer in the documentation and/or other
-    materials provided with the distribution.
-
-  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
-  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
-  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
-  STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
-  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+/* pinout: Teensy 3.2
+    Pin 1
+    Pin 2 Ch A wheel encoder
+    Pin 3 Ch B wheel encoder (US digital)
+    Pin 4
+    Pin 5
+    Pin 6 WS812B neopixel data out
+    Pin 7
+    Pin 8
+    Pin 9
+    Pin 10 OLED SPI CS
+    Pin 11 OLED SPI MOSI
+    Pin 12
+    Pin 13 OLED SPI CLK
+    Pin 14
+    Pin 15 OLED SPI DC
+    Pin 16
+    Pin 17
+    Pin 18
+    Pin 19
+    Pin 20
+    Pin 21
+    Pin 22
+    Pin 23
 
 */
 
 #include <Arduino.h>
+
+#include "colors.h"
+
+#include <FastLED.h>
+#include <Encoder.h>
+#include <SPI.h>
+#define SLOW_SPI
+#include <ssd1351.h>
+
+
+/***********************************************FASTLED***********************************/
+
+
+
+
+FASTLED_USING_NAMESPACE
+
+#define DATA_PIN    5
+//#define CLK_PIN   4
+#define LED_TYPE    WS2811
+#define COLOR_ORDER GRB
+//#define NUM_LEDS    (32+24+16+12 +8 + 1 + 10)
+#define NUM_LEDS    60
+
+CRGB leds[NUM_LEDS];
+
+#define BRIGHTNESS          255
+#define FRAMES_PER_SECOND  120
 
 
 
 /****************************************** ENCODER ********************/
 
 
-#include <Encoder.h>
+
 
 // Change these two numbers to the pins connected to your encoder.
 //   Best Performance: both pins have interrupt capability
@@ -50,9 +77,6 @@ Encoder wheel(2, 3);
 
 /****************************************** OLED ********************/
 
-#include <SPI.h>
-#define SLOW_SPI
-#include <ssd1351.h>
 
 
 // think this is teensy only!
@@ -83,26 +107,24 @@ typedef ssd1351::HighColor Color;
 // auto display = ssd1351::SSD1351<Color, ssd1351::NoBuffer, 128, 96>();
 auto display = ssd1351::SSD1351<Color, ssd1351::SingleBuffer, 128, 128>();
 
-/***********************************************FASTLED***********************************/
-
-#include <FastLED.h>
-
-FASTLED_USING_NAMESPACE
-
-#define DATA_PIN    5
-//#define CLK_PIN   4
-#define LED_TYPE    WS2811
-#define COLOR_ORDER GRB
-#define NUM_LEDS    (32+24+16+12 +8 + 1 + 10)
-//#define NUM_LEDS    32
-
-CRGB leds[NUM_LEDS];
-
-#define BRIGHTNESS          96
-#define FRAMES_PER_SECOND  120
-
-
-
+const uint8_t PROGMEM gamma8[] = {
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,
+  2,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,
+  5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,  9,  9,  9, 10,
+  10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16,
+  17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 24, 24, 25,
+  25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36,
+  37, 38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50,
+  51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68,
+  69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
+  90, 92, 93, 95, 96, 98, 99, 101, 102, 104, 105, 107, 109, 110, 112, 114,
+  115, 117, 119, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 138, 140, 142,
+  144, 146, 148, 150, 152, 154, 156, 158, 160, 162, 164, 167, 169, 171, 173, 175,
+  177, 180, 182, 184, 186, 189, 191, 193, 196, 198, 200, 203, 205, 208, 210, 213,
+  215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255
+};
 
 void setup(void) {
 
@@ -112,18 +134,22 @@ void setup(void) {
   display.setTextSize(1);
 
   // tell FastLED about the LED strip configuration
- //FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
   //FastLED.addLeds<LED_TYPE,DATA_PIN,CLK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
 
   // set master brightness control
-  //FastLED.setBrightness(BRIGHTNESS);
+  FastLED.setBrightness(BRIGHTNESS);
   Serial.begin(38400);
 
 }
 
 char teststr[30];
+char timestr[30];
 
-void updateOLED(int sscroll) {
+
+
+
+void updateOLED(uint32_t sscroll) {
   display.fillScreen(ssd1351::RGB());
 
   //display.setFont(FreeMonoBold24pt7b);
@@ -131,28 +157,72 @@ void updateOLED(int sscroll) {
   display.setTextSize(1);
 
 
-  sprintf(teststr, "%d", sscroll & 0xFFF);
-  uint16_t w = display.getTextWidth(teststr);
+  sprintf(teststr, "%ld", sscroll);
+  timestr_for_index(sscroll);
+  uint16_t w = display.getTextWidth(timestr);
 
   display.setCursor(64 - w / 2, 40);
-  display.setTextColor(ssd1351::RGB(255, 255, 255));
-  display.print(teststr);
-  display.drawLine(63, 0, 63, 96, ssd1351::RGB(255, 0, 0));
+  display.setTextColor(ssd1351::RGB(255, 140, 0));
+  display.print(timestr);
+  display.drawLine(0, 0, 127, 0, ssd1351::RGB(0, 0, 255));
+  display.drawLine(0, 0, 0, 127, ssd1351::RGB(0, 0, 255));
+  display.drawLine(127, 0, 127, 127, ssd1351::RGB(0, 0, 255));
+  display.drawLine(0, 127, 127, 127, ssd1351::RGB(0, 0, 255));
 
   display.updateScreen();
 
 }
 
 
-char ostr[32];
+void updateLEDs(uint32_t cptr) {
+  if (cptr >= CTAB_LEN) {
+    cptr = CTAB_LEN - 1;
+  }
+  if (cptr < 0) {
+    cptr = 0;
+  }
+  uint32_t ccolor =  pgm_read_dword(&ctable[cptr]);
+  uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16]);
+  uint8_t g = pgm_read_byte(&gamma8[ccolor >> 8  & 0xFF]);
+  uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
+  //FastLED.showColor(CRGB(r,g,b));
+  FastLED.showColor(ccolor);
+  //display.fillScreen(ssd1351::RGB(r, g, b));
+  //display.updateScreen();
 
+}
+
+
+void timestr_for_index(uint32_t idx) {
+  // compute seconds since since midnight (constant from colors.h)
+  float ssm = idx *  SECS_PER_C;
+
+  int secs = (int) round(ssm);
+
+  int hrs = secs / 3600;
+
+  secs = secs - 3600*hrs;
+
+  int mins = secs / 60;
+  secs = secs - 60*mins;
+
+  sprintf(timestr, "%02d:%02d:%02d", hrs, mins, secs);
+  //sprintf(timestr, "%ld", idx);
+
+
+
+}
 void loop(void) {
-  sprintf(ostr, "pos: %d", wheel.read());
 
 
-  int hue = (wheel.read() >> 6) & 255;
-  updateOLED(hue);
-  Serial.println(hue);
+
+  int wptr = (wheel.read() >> 6);
+
+  Serial.println(wptr);
+
+  updateLEDs(wptr);
+  updateOLED(wptr);
+
   //FastLED.showColor(CHSV(hue, 255, 255));
   //delay(100);
 }
