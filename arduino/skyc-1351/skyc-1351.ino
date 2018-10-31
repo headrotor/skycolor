@@ -34,7 +34,15 @@
 
 #include <Arduino.h>
 
-#include "colors.h"
+//#include "colors.h"
+//const PROGMEM prog_uint32_t ctable[]={0x0}
+#define CTAB_LEN 60
+#define SECS_PER_C 1.0
+//const PROGMEM prog_uint32_t mtable[CTAB_LEN];
+uint32_t mtable[CTAB_LEN];
+
+
+
 
 #include <FastLED.h>
 #include <Encoder.h>
@@ -129,6 +137,7 @@ const uint8_t PROGMEM gamma8[] = {
 void setup(void) {
 
   delay(3000); // 3 second delay for recovery
+  make_mtable();
 
   display.begin();
   display.setTextSize(1);
@@ -181,7 +190,9 @@ void updateLEDs(uint32_t cptr) {
   if (cptr < 0) {
     cptr = 0;
   }
-  uint32_t ccolor =  pgm_read_dword(&ctable[cptr]);
+
+  //uint32_t ccolor =  pgm_read_dword(&ctable[cptr]);
+  uint32_t ccolor =  mtable[cptr];
   uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16]);
   uint8_t g = pgm_read_byte(&gamma8[ccolor >> 8  & 0xFF]);
   uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
@@ -193,18 +204,106 @@ void updateLEDs(uint32_t cptr) {
 }
 
 
-void timestr_for_index(uint32_t idx) {
+
+void hypupdateLEDs(uint32_t cptr) {
+
+  // hyperbolically map cptr
+
+  if (cptr >= CTAB_LEN) {
+    cptr = CTAB_LEN - 1;
+  }
+  if (cptr < 0) {
+    cptr = 0;
+  }
+
+  for (int i = 0; i < NUM_LEDS; i++) {
+
+    leds[i] = CRGB(0, 0, 0);
+
+    int j = hyp_map(NUM_LEDS, i, float(cptr) / float(CTAB_LEN), 5.0);
+
+
+    //uint32_t ccolor =  pgm_read_dword(&ctable[cptr]);
+
+    j = (i + cptr) % NUM_LEDS;
+    uint32_t ccolor =  mtable[j];
+    uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16]);
+    uint8_t g = pgm_read_byte(&gamma8[ccolor >> 8  & 0xFF]);
+    uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
+
+    leds[j] = CRGB(r, g, b);
+
+    //FastLED.showColor(CRGB(r,g,b));
+
+  }
+
+  FastLED.show();
+
+
+  //display.fillScreen(ssd1351::RGB(r, g, b));
+  //display.updateScreen();
+
+}
+
+
+void hypupdate(uint32_t cptr) {
+
+  // hyperbolically map cptr
+
+  if (cptr >= CTAB_LEN) {
+    cptr = CTAB_LEN - 1;
+  }
+  if (cptr < 0) {
+    cptr = 0;
+  }
+
+  for (int i = 0; i < NUM_LEDS; i++) {
+
+
+    int j = hyp_map(NUM_LEDS, i, float(cptr) / float(CTAB_LEN), 10.0);
+
+
+  
+    //j = (i + cptr) % NUM_LEDS;
+    uint32_t ccolor =  mtable[j];
+    if (ccolor) {
+      Serial.write('x');
+    }
+    else {
+      Serial.write('-');
+    }
+
+  }
+
+  Serial.println("");
+
+}
+
+int hyp_map(int i, int n, float hcent, float zoom) {
+  //hyperbolic map: returns int i 0<i<n  where i is hyperbolically mapped with center at fraction c 0.< c <1.
+  // and zoomed'''
+
+  float x = zoom * ((float(i) / n - 0.5) + (0.5 - hcent) );
+  float y = (exp(2 * x) - 1) / (exp(2 * x) + 1 );
+  // y is now -1<0<1, map to 0-> and scale n
+
+  return int((y + 1) * (n / 2. - 1));
+}
+
+void timestr_for_index(long int idx) {
   // compute seconds since since midnight (constant from colors.h)
+
+
   float ssm = idx *  SECS_PER_C;
 
   int secs = (int) round(ssm);
 
   int hrs = secs / 3600;
 
-  secs = secs - 3600*hrs;
+  secs = secs - 3600 * hrs;
 
   int mins = secs / 60;
-  secs = secs - 60*mins;
+  secs = secs - 60 * mins;
 
   sprintf(timestr, "%02d:%02d:%02d", hrs, mins, secs);
   //sprintf(timestr, "%ld", idx);
@@ -212,15 +311,42 @@ void timestr_for_index(uint32_t idx) {
 
 
 }
+
+void make_mtable() {
+  int i;
+  for (i = 0; i < CTAB_LEN; i++) {
+    if ( (i >= 29) && ( i < 31)) {
+      mtable[i] = 0x00008F;
+    }
+    else {
+      mtable[i] = 0x000000;
+    }
+  }
+}
+
+
+
+
 void loop(void) {
 
+  long int wptr = wheel.read();
+  // prevent negative values
+  if (wptr < 0) {
 
 
-  int wptr = (wheel.read() >> 6);
+
+    wptr = 0;
+    wheel.write(0);
+  }
+
+  //wptr = wptr >> 6;
+
+  wptr = wptr >> 8;
+
 
   Serial.println(wptr);
 
-  updateLEDs(wptr);
+  hypupdate(wptr);
   updateOLED(wptr);
 
   //FastLED.showColor(CHSV(hue, 255, 255));
