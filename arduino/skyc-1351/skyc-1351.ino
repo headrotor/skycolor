@@ -23,24 +23,25 @@
     Pin 15 OLED SPI DC
     Pin 16
     Pin 17
-    Pin 18
-    Pin 19
-    Pin 20
-    Pin 21
-    Pin 22
-    Pin 23
+    Pin 18 Enc L Button (yel)
+    Pin 19 Enc L PHA (grn)
+    Pin 20 Enc L PHB (blu)
+    Pin 21 Enc R Button (yel)
+    Pin 22 Enc R PHA (grn)
+    Pin 23 Enc R PHB (blu)
 
 */
 
 #include <Arduino.h>
 
-//#include "colors.h"
-//const PROGMEM prog_uint32_t ctable[]={0x0}
-#define CTAB_LEN 60
-#define SECS_PER_C 1.0
-//const PROGMEM prog_uint32_t mtable[CTAB_LEN];
-uint32_t mtable[CTAB_LEN];
 
+#include "smallcolors.h"
+//#define SECS_PER_C 1.0
+//#define CTAB_LEN 100
+
+// for debugging hyperbolic map
+#define MTAB_LEN (60)
+uint32_t mtable[MTAB_LEN];
 
 
 
@@ -49,6 +50,8 @@ uint32_t mtable[CTAB_LEN];
 #include <SPI.h>
 #define SLOW_SPI
 #include <ssd1351.h>
+#include <Bounce2.h>
+
 
 
 /***********************************************FASTLED***********************************/
@@ -58,7 +61,7 @@ uint32_t mtable[CTAB_LEN];
 
 FASTLED_USING_NAMESPACE
 
-#define DATA_PIN    5
+#define DATA_PIN    6
 //#define CLK_PIN   4
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
@@ -72,16 +75,33 @@ CRGB leds[NUM_LEDS];
 
 
 
-/****************************************** ENCODER ********************/
+/****************************************** ENCODERS & BUTTONS********************/
 
 
+// # need to turn on pullups so used #defs
+
+#define RIGHTB 18
+#define ENCRA  19
+#define ENCRB  20
 
 
-// Change these two numbers to the pins connected to your encoder.
-//   Best Performance: both pins have interrupt capability
-//   Good Performance: only the first pin has interrupt capability
-//   Low Performance:  neither pin has interrupt capability
-Encoder wheel(2, 3);
+#define LEFTB  21
+#define ENCLA  22
+#define ENCLB  23
+
+
+Encoder wheel(2, 3);  // time wheel
+Encoder encl(ENCLA, ENCLB); //left dial encoder
+Encoder encr(ENCRA, ENCRB); //right dial encoder
+
+// keep encoder values so whe can tell when they have changed
+long int tdial = 0;
+long int rdial = 0;
+long int ldial = 0;
+
+
+Bounce leftb = Bounce(); // Instantiate a Bounce object
+Bounce rightb = Bounce(); // Instantiate a Bounce object
 
 /****************************************** OLED ********************/
 
@@ -136,8 +156,30 @@ const uint8_t PROGMEM gamma8[] = {
 
 void setup(void) {
 
+
+
+
   delay(3000); // 3 second delay for recovery
+
+  // Turn on pullups on encoders and pushbuttons
+  pinMode(ENCRA, INPUT_PULLUP);
+  pinMode(ENCRB, INPUT_PULLUP);
+  pinMode(ENCLA, INPUT_PULLUP);
+
+
+  // pushbottons on encoders
+  leftb.attach(LEFTB);
+  leftb.interval(25);
+  rightb.attach(RIGHTB);
+  rightb.interval(25);
+
+  pinMode(LEFTB, INPUT_PULLUP);
+  pinMode(RIGHTB, INPUT_PULLUP);
+
+
+
   make_mtable();
+
 
   display.begin();
   display.setTextSize(1);
@@ -154,8 +196,6 @@ void setup(void) {
 
 char teststr[30];
 char timestr[30];
-
-
 
 
 void updateOLED(uint32_t sscroll) {
@@ -183,7 +223,7 @@ void updateOLED(uint32_t sscroll) {
 }
 
 
-void updateLEDs(uint32_t cptr) {
+void updateLEDs(int cptr) {
   if (cptr >= CTAB_LEN) {
     cptr = CTAB_LEN - 1;
   }
@@ -205,90 +245,90 @@ void updateLEDs(uint32_t cptr) {
 
 
 
-void hypupdateLEDs(uint32_t cptr) {
+void hypupdateLEDs(int cptr, float zoom) {
 
   // hyperbolically map cptr
+  int j = 0;
+  float hcent = float(cptr) / float(CTAB_LEN);
 
-  if (cptr >= CTAB_LEN) {
-    cptr = CTAB_LEN - 1;
+  if (hcent > 1.) {
+    hcent = 1.;
   }
-  if (cptr < 0) {
-    cptr = 0;
+  else if (hcent < 0.0) {
+    hcent = 0.;
   }
+
 
   for (int i = 0; i < NUM_LEDS; i++) {
 
     leds[i] = CRGB(0, 0, 0);
 
-    int j = hyp_map(NUM_LEDS, i, float(cptr) / float(CTAB_LEN), 5.0);
+    j = ihyp_map(i, NUM_LEDS, CTAB_LEN, hcent, zoom);
 
 
-    //uint32_t ccolor =  pgm_read_dword(&ctable[cptr]);
+    uint32_t ccolor =  pgm_read_dword(&ctable[j]);
 
-    j = (i + cptr) % NUM_LEDS;
-    uint32_t ccolor =  mtable[j];
     uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16]);
     uint8_t g = pgm_read_byte(&gamma8[ccolor >> 8  & 0xFF]);
     uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
 
-    leds[j] = CRGB(r, g, b);
-
-    //FastLED.showColor(CRGB(r,g,b));
-
+    leds[i] = CRGB(r, g, b);
   }
 
   FastLED.show();
 
-
-  //display.fillScreen(ssd1351::RGB(r, g, b));
-  //display.updateScreen();
-
 }
 
 
-void hypupdate(uint32_t cptr) {
+void hypupdate( int mptr, float zoom) {
 
   // hyperbolically map cptr
+  int j = 0;
 
-  if (cptr >= CTAB_LEN) {
-    cptr = CTAB_LEN - 1;
+  float hcent = float(mptr) / float(MTAB_LEN);
+
+  if (hcent > 1.) {
+    hcent = 1.;
   }
-  if (cptr < 0) {
-    cptr = 0;
+  else if (hcent < 0.0) {
+    hcent = 0.;
   }
 
-  for (int i = 0; i < NUM_LEDS; i++) {
+  /*
+
+    Serial.print(" hcent=");
+    Serial.print(hcent );
+
+    Serial.print(" mptr=");
+    Serial.print(mptr);
+  */
+
+  for (int i = 0; i < MTAB_LEN; i++) {
 
 
-    int j = hyp_map(NUM_LEDS, i, float(cptr) / float(CTAB_LEN), 10.0);
+    j = ihyp_map( i, MTAB_LEN, MTAB_LEN, hcent, zoom);
 
 
-  
-    //j = (i + cptr) % NUM_LEDS;
-    uint32_t ccolor =  mtable[j];
-    if (ccolor) {
-      Serial.write('x');
+    //j = abs(j);
+    // Serial.print(j);
+    //Serial.print(' ');
+
+    if (j >= 0) {
+      uint32_t ccolor =  mtable[j];
+      if (ccolor) {
+        Serial.write('x');
+      }
+      else {
+        Serial.write('-');
+      }
+
     }
-    else {
-      Serial.write('-');
-    }
-
   }
-
   Serial.println("");
 
 }
 
-int hyp_map(int i, int n, float hcent, float zoom) {
-  //hyperbolic map: returns int i 0<i<n  where i is hyperbolically mapped with center at fraction c 0.< c <1.
-  // and zoomed'''
 
-  float x = zoom * ((float(i) / n - 0.5) + (0.5 - hcent) );
-  float y = (exp(2 * x) - 1) / (exp(2 * x) + 1 );
-  // y is now -1<0<1, map to 0-> and scale n
-
-  return int((y + 1) * (n / 2. - 1));
-}
 
 void timestr_for_index(long int idx) {
   // compute seconds since since midnight (constant from colors.h)
@@ -314,7 +354,7 @@ void timestr_for_index(long int idx) {
 
 void make_mtable() {
   int i;
-  for (i = 0; i < CTAB_LEN; i++) {
+  for (i = 0; i < MTAB_LEN; i++) {
     if ( (i >= 29) && ( i < 31)) {
       mtable[i] = 0x00008F;
     }
@@ -324,16 +364,79 @@ void make_mtable() {
   }
 }
 
+int ihyp_map(int o, int n, int m, float hcent, float zoom) {
+  // use this to nonlinear map into an output table of n slots from an input map of m slots.
+  // hcent is 0 < hcent < maps center of transformation. Zoom is roughly slope.
+  // i is output element out of n.
+  //  m is total number of input slots. (Range is infinite but clipped to 0 < hcent*m < m
+  float eps = 0.001;
+  float x = 2. * (float(o) / float(n))  - 1.0;
+  if (x <= -1.0) {
+    x = -1.0 + eps;
+  }
+  else if  (x >= 1.0) {
+    x = 1.0 - eps;
+  }
+  float y = 2 * log((1 + x) / (1 - x));
+  // y is now symmetric around zero, recenter, scale to m, and clip
 
+
+  if (hcent < 0) {
+    hcent = 0;
+  }
+  else if  (hcent >= 1.0) {
+    hcent = 1.0;
+  }
+
+
+  float q = (zoom * 0.5 * float(m) * y) + (hcent * float(m));
+
+  /*
+    Serial.print(" q=");
+    Serial.print(q);
+    Serial.print("q ");
+  */
+  if (q >= float(m)) {
+    return (m - 1);
+  }
+  else if  (q < 0.) {
+    return (int)(0);
+  }
+
+  else return ((int) floor(q));
+}
 
 
 void loop(void) {
 
+  leftb.update();
+  rightb.update();
+
+  if ( leftb.fell()) {
+    Serial.println("LEFTB!");
+  }
+
+  if ( rightb.fell()) {
+    Serial.println("rightb!");
+  }
+
+
+  if (encl.read() != ldial) {
+    ldial = encl.read();
+    Serial.print("ldiall: ");
+    Serial.println(ldial);
+
+  }
+  if (encr.read() != rdial) {
+    rdial = encr.read();
+    Serial.print("rdiall: ");
+    Serial.println(rdial);
+
+  }
+
   long int wptr = wheel.read();
   // prevent negative values
   if (wptr < 0) {
-
-
 
     wptr = 0;
     wheel.write(0);
@@ -343,12 +446,23 @@ void loop(void) {
 
   wptr = wptr >> 8;
 
+  hypupdate((int)(wptr & 0xFFFF), 0.05);
+  hypupdateLEDs((int)(wptr & 0xFFFF), 0.05);
 
-  Serial.println(wptr);
 
-  hypupdate(wptr);
   updateOLED(wptr);
-
-  //FastLED.showColor(CHSV(hue, 255, 255));
-  //delay(100);
 }
+
+
+/*
+  int hyp_map(int i, int n, float hcent, float zoom) {
+  //hyperbolic map: returns int i 0<i<n  where i is hyperbolically mapped with center at fraction c 0.< c <1.
+  // and zoomed'''
+
+  float x = zoom * ((float(i) / n - 0.5) + (0.5 - hcent) );
+  float y = (exp(2 * x) - 1) / (exp(2 * x) + 1 );
+  // y is now -1<0<1, map to 0-> and scale n
+
+  return int((y + 1) * (n / 2. - 1));
+  }
+*/
