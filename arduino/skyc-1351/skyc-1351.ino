@@ -47,6 +47,10 @@ uint32_t mtable[MTAB_LEN];
 
 #include <FastLED.h>
 #include <Encoder.h>
+//#define HALF_STEP
+#include "rotaryplus.h"
+
+
 #include <SPI.h>
 #define SLOW_SPI
 #include <ssd1351.h>
@@ -91,8 +95,11 @@ CRGB leds[NUM_LEDS];
 
 
 Encoder wheel(2, 3);  // time wheel
-Encoder encl(ENCLA, ENCLB); //left dial encoder
-Encoder encr(ENCRA, ENCRB); //right dial encoder
+
+// debounced encoder for mechanical encoders
+Rotary encr =  Rotary(ENCRA, ENCRB);
+Rotary encl =  Rotary(ENCLA, ENCLB);
+
 
 // keep encoder values so whe can tell when they have changed
 long int tdial = 0;
@@ -151,13 +158,58 @@ const uint8_t PROGMEM gamma8[] = {
   115, 117, 119, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 138, 140, 142,
   144, 146, 148, 150, 152, 154, 156, 158, 160, 162, 164, 167, 169, 171, 173, 175,
   177, 180, 182, 184, 186, 189, 191, 193, 196, 198, 200, 203, 205, 208, 210, 213,
-  215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255
+  215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 253
 };
 
+
+
+/********************************* Timing & state machine *****************************/
+
+
+#define SHOW_TIME 0
+#define SHOW_ZOOM 1
+#define SHOW_SPEED 2
+#define SHOW_BLANK 3
+
+int disp_state = SHOW_TIME;
+
+// Use for display timeout
+elapsedMillis display_time;
+
+static const unsigned long TICK_INTERVAL = 1000; // ms
+static unsigned long last_update_time = 0;
+
+
+// seconds since midnight
+int secs_sm = 0;
+
+const int secs_per_day = 3600 * 24;
+
+// global zoom (how much to expand hyperbolic zoom
+#define MAX_ZOOM 20
+#define MIN_ZOOM 1
+long int glob_zoom = MIN_ZOOM;
+
+
+// global speed (how much to speed up time and time wheel)
+#define MAX_SPEED 50
+#define MIN_SPEED 1
+long int glob_speed = 1;
+
+
+// strings for display
+char disp_str[30];
+char timestr[30];
+
+void check_encl() {
+  encl.process();
+}
+void check_encr() {
+  encr.process();
+}
+
+
 void setup(void) {
-
-
-
 
   delay(3000); // 3 second delay for recovery
 
@@ -165,6 +217,17 @@ void setup(void) {
   pinMode(ENCRA, INPUT_PULLUP);
   pinMode(ENCRB, INPUT_PULLUP);
   pinMode(ENCLA, INPUT_PULLUP);
+  pinMode(ENCLB, INPUT_PULLUP);
+  pinMode(RIGHTB, INPUT_PULLUP);
+  pinMode(LEFTB, INPUT_PULLUP);
+
+  encl.setPos(MIN_ZOOM);
+  encr.setPos(MIN_SPEED);
+
+  attachInterrupt(ENCLA, check_encl, CHANGE);
+  attachInterrupt(ENCLB, check_encl, CHANGE);
+  attachInterrupt(ENCRA, check_encr, CHANGE);
+  attachInterrupt(ENCRB, check_encr, CHANGE);
 
 
   // pushbottons on encoders
@@ -172,10 +235,6 @@ void setup(void) {
   leftb.interval(25);
   rightb.attach(RIGHTB);
   rightb.interval(25);
-
-  pinMode(LEFTB, INPUT_PULLUP);
-  pinMode(RIGHTB, INPUT_PULLUP);
-
 
 
   make_mtable();
@@ -194,32 +253,95 @@ void setup(void) {
 
 }
 
-char teststr[30];
-char timestr[30];
 
 
-void updateOLED(uint32_t sscroll) {
+void updateOLED(void) {
+  // clear screen so we can overwrite
   display.fillScreen(ssd1351::RGB());
+  if (display_time > 30000) {
+    // timeout; blank screeen
+    display.updateScreen();
+    return;
+  }
+  switch (disp_state) {
+    case SHOW_TIME:
+      OLED_show_time();
+      break;
+
+    case SHOW_ZOOM:
+      OLED_show_zoom();
+      break;
+
+    case SHOW_SPEED:
+      OLED_show_speed();
+      break;
+
+  }
+
+  display.updateScreen();
+}
+
+void OLED_show_time(void) {
+
+  // global time is in disp_time
+  static int max_w = -1;
+
+
+  //display.setFont(FreeMonoBold24pt7b);
+  display.setFont(FreeSansBoldOblique12pt7b);
+  display.setTextSize(1);
+
+  timestr_for_seconds(secs_sm);
+  // stop disply jitter by usning longest string so far
+  if (display.getTextWidth(timestr) > max_w) {
+    max_w = display.getTextWidth(timestr);
+  }
+
+  display.setCursor(64 - max_w / 2, 40);
+  display.setTextColor(ssd1351::RGB(255, 140, 0));
+  display.print(timestr);
+  OLED_draw_frame(0, 0, 255);
+}
+
+void OLED_draw_frame(uint8_t r, uint8_t g, uint8_t b ) {
+  display.drawLine(0, 0, 127, 0, ssd1351::RGB(r, g, b));
+  display.drawLine(0, 0, 0, 127, ssd1351::RGB(r, g, b));
+  display.drawLine(127, 0, 127, 127, ssd1351::RGB(r, g, b));
+  display.drawLine(0, 127, 127, 127, ssd1351::RGB(r, g, b));
+
+}
+
+void OLED_show_zoom(void) {
+
+  // global time is in disp_time
+
 
   //display.setFont(FreeMonoBold24pt7b);
   display.setFont(FreeSansBoldOblique12pt7b);
   display.setTextSize(1);
 
 
-  sprintf(teststr, "%ld", sscroll);
-  timestr_for_index(sscroll);
-  uint16_t w = display.getTextWidth(timestr);
+  sprintf(disp_str, "z:%ld", glob_zoom);
 
-  display.setCursor(64 - w / 2, 40);
+  display.setCursor(32, 40);
   display.setTextColor(ssd1351::RGB(255, 140, 0));
-  display.print(timestr);
-  display.drawLine(0, 0, 127, 0, ssd1351::RGB(0, 0, 255));
-  display.drawLine(0, 0, 0, 127, ssd1351::RGB(0, 0, 255));
-  display.drawLine(127, 0, 127, 127, ssd1351::RGB(0, 0, 255));
-  display.drawLine(0, 127, 127, 127, ssd1351::RGB(0, 0, 255));
+  display.print(disp_str);
+  OLED_draw_frame(0, 255, 255);
+}
 
-  display.updateScreen();
 
+void OLED_show_speed(void) {
+
+  //display.setFont(FreeMonoBold24pt7b);
+  display.setFont(FreeSansBoldOblique12pt7b);
+  display.setTextSize(1);
+
+  sprintf(disp_str, "s:%ld", glob_speed);
+
+  display.setCursor(32, 40);
+  display.setTextColor(ssd1351::RGB(255, 140, 0));
+  display.print(disp_str);
+  OLED_draw_frame(255, 0, 255);
 }
 
 
@@ -245,8 +367,9 @@ void updateLEDs(int cptr) {
 
 
 
-void hypupdateLEDs(int cptr, float zoom) {
+void hypupdateLEDs(int secs, float zoom) {
 
+  int cptr = index_for_secs(secs);
   // hyperbolically map cptr
   int j = 0;
   float hcent = float(cptr) / float(CTAB_LEN);
@@ -268,11 +391,11 @@ void hypupdateLEDs(int cptr, float zoom) {
 
     uint32_t ccolor =  pgm_read_dword(&ctable[j]);
 
-    uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16]);
+    uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16 & 0xFF]);
     uint8_t g = pgm_read_byte(&gamma8[ccolor >> 8  & 0xFF]);
     uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
 
-    leds[i] = CRGB(r, g, b);
+    leds[i] = CRGB(r + 1, g + 2, b + 2);
   }
 
   FastLED.show();
@@ -280,63 +403,26 @@ void hypupdateLEDs(int cptr, float zoom) {
 }
 
 
-void hypupdate( int mptr, float zoom) {
-
-  // hyperbolically map cptr
-  int j = 0;
-
-  float hcent = float(mptr) / float(MTAB_LEN);
-
-  if (hcent > 1.) {
-    hcent = 1.;
+int index_for_secs(long int secs) {
+  // return index into color table given seconds after midnight
+  float dayfrac = float(secs) / float(secs_per_day);
+  int idx = (int) floor(dayfrac * CTAB_LEN);
+  if (idx >=  CTAB_LEN) {
+    idx = CTAB_LEN - 1;
   }
-  else if (hcent < 0.0) {
-    hcent = 0.;
-  }
+  return (idx);
+}
 
-  /*
-
-    Serial.print(" hcent=");
-    Serial.print(hcent );
-
-    Serial.print(" mptr=");
-    Serial.print(mptr);
-  */
-
-  for (int i = 0; i < MTAB_LEN; i++) {
-
-
-    j = ihyp_map( i, MTAB_LEN, MTAB_LEN, hcent, zoom);
-
-
-    //j = abs(j);
-    // Serial.print(j);
-    //Serial.print(' ');
-
-    if (j >= 0) {
-      uint32_t ccolor =  mtable[j];
-      if (ccolor) {
-        Serial.write('x');
-      }
-      else {
-        Serial.write('-');
-      }
-
-    }
-  }
-  Serial.println("");
+int secs_for_index(int idx) {
+  // return index into color table given seconds after midnight
+  float dayfrac = float(idx) / float(CTAB_LEN);
+  int secs = (int) floor(dayfrac * secs_per_day);
+  return (secs);
 
 }
 
-
-
-void timestr_for_index(long int idx) {
+void timestr_for_seconds(int secs) {
   // compute seconds since since midnight (constant from colors.h)
-
-
-  float ssm = idx *  SECS_PER_C;
-
-  int secs = (int) round(ssm);
 
   int hrs = secs / 3600;
 
@@ -348,9 +434,20 @@ void timestr_for_index(long int idx) {
   sprintf(timestr, "%02d:%02d:%02d", hrs, mins, secs);
   //sprintf(timestr, "%ld", idx);
 
-
-
 }
+
+void update_time() {
+
+  int oneday = 24 * 3600;
+  if (millis() - last_update_time >= TICK_INTERVAL) {
+    last_update_time += TICK_INTERVAL;
+    secs_sm += 1;
+    if (secs_sm >  oneday) {
+      secs_sm -= oneday;
+    }
+  }
+}
+
 
 void make_mtable() {
   int i;
@@ -407,50 +504,76 @@ int ihyp_map(int o, int n, int m, float hcent, float zoom) {
 }
 
 
+
 void loop(void) {
+
+  update_time();
 
   leftb.update();
   rightb.update();
 
   if ( leftb.fell()) {
     Serial.println("LEFTB!");
+    display_time = 0;
   }
 
   if ( rightb.fell()) {
     Serial.println("rightb!");
+    display_time = 0;
+  }
+
+  /*
+    int ldiff = encl.read() - ldial;
+
+
+  */
+
+  if (encl.change()) {
+    display_time = 0;
+    disp_state = SHOW_ZOOM;
+    glob_zoom = encl.pos();
+    if (glob_zoom > MAX_ZOOM) {
+      glob_zoom = MAX_ZOOM;
+      encl.setPos(MAX_ZOOM);
+    }
+    else if (glob_zoom < MIN_ZOOM) {
+      glob_zoom = MIN_ZOOM;
+      encl.setPos(MIN_ZOOM);
+    }
+  }
+
+  if (encr.change()) {
+    display_time = 0;
+    disp_state = SHOW_SPEED;
+    glob_speed = encr.pos();
+    if (glob_speed > MAX_SPEED) {
+      glob_speed = MAX_SPEED;
+      encr.setPos(MAX_SPEED);
+    }
+    else if (glob_zoom < MIN_SPEED) {
+      glob_speed = MIN_SPEED;
+      encr.setPos(MIN_SPEED);
+    }
+  }
+
+  int tdiff = wheel.read() - tdial;
+  if (tdiff != 0) {
+    tdial = wheel.read();
+    display_time = 0;
+    disp_state = SHOW_TIME;
+    if (tdial < 0) {
+      wheel.write(0);
+      secs_sm = 0;
+    }
+    secs_sm += glob_speed * (tdiff / 8);
   }
 
 
-  if (encl.read() != ldial) {
-    ldial = encl.read();
-    Serial.print("ldiall: ");
-    Serial.println(ldial);
-
-  }
-  if (encr.read() != rdial) {
-    rdial = encr.read();
-    Serial.print("rdiall: ");
-    Serial.println(rdial);
-
-  }
-
-  long int wptr = wheel.read();
-  // prevent negative values
-  if (wptr < 0) {
-
-    wptr = 0;
-    wheel.write(0);
-  }
-
-  //wptr = wptr >> 6;
-
-  wptr = wptr >> 8;
-
-  hypupdate((int)(wptr & 0xFFFF), 0.05);
-  hypupdateLEDs((int)(wptr & 0xFFFF), 0.05);
+  //hypupdate((int)(wptr & 0xFFFF), 0.05);
+  hypupdateLEDs((int)(secs_sm & 0xFFFF), 0.05);
 
 
-  updateOLED(wptr);
+  updateOLED();
 }
 
 
@@ -465,4 +588,39 @@ void loop(void) {
 
   return int((y + 1) * (n / 2. - 1));
   }
+
+  void hypupdate( int mptr, float zoom) {
+
+  // hyperbolically map cptr
+  int j = 0;
+
+  float hcent = float(mptr) / float(MTAB_LEN);
+
+  if (hcent > 1.) {
+    hcent = 1.;
+  }
+  else if (hcent < 0.0) {
+    hcent = 0.;
+  }
+
+
+
+  for (int i = 0; i < MTAB_LEN; i++) {
+    j = ihyp_map( i, MTAB_LEN, MTAB_LEN, hcent, zoom);
+
+    if (j >= 0) {
+      uint32_t ccolor =  mtable[j];
+      if (ccolor) {
+        Serial.write('x');
+      }
+      else {
+        Serial.write('-');
+      }
+
+    }
+  }
+  Serial.println("");
+
+  }
+
 */
