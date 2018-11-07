@@ -39,9 +39,7 @@
 //#define SECS_PER_C 1.0
 //#define CTAB_LEN 100
 
-// for debugging hyperbolic map
-#define MTAB_LEN (60)
-uint32_t mtable[MTAB_LEN];
+
 
 
 
@@ -97,8 +95,9 @@ CRGB leds[NUM_LEDS];
 Encoder wheel(2, 3);  // time wheel
 
 // debounced encoder for mechanical encoders
-Rotary encr =  Rotary(ENCRA, ENCRB);
-Rotary encl =  Rotary(ENCLA, ENCLB);
+// (swapped for correct spin direction)
+Rotary encr =  Rotary(ENCRB, ENCRA);
+Rotary encl =  Rotary(ENCLB, ENCLA);
 
 
 // keep encoder values so whe can tell when they have changed
@@ -169,14 +168,14 @@ const uint8_t PROGMEM gamma8[] = {
 #define SHOW_TIME 0
 #define SHOW_ZOOM 1
 #define SHOW_SPEED 2
-#define SHOW_BLANK 3
+#define BLANK_SCREEN 3
 
 int disp_state = SHOW_TIME;
 
 // Use for display timeout
 elapsedMillis display_time;
 
-static const unsigned long TICK_INTERVAL = 1000; // ms
+static unsigned long tick_interval = 1000; // ms
 static unsigned long last_update_time = 0;
 
 
@@ -188,13 +187,13 @@ const int secs_per_day = 3600 * 24;
 // global zoom (how much to expand hyperbolic zoom
 #define MAX_ZOOM 20
 #define MIN_ZOOM 1
-long int glob_zoom = MIN_ZOOM;
+int glob_zoom = MIN_ZOOM;
 
 
 // global speed (how much to speed up time and time wheel)
 #define MAX_SPEED 50
 #define MIN_SPEED 1
-long int glob_speed = 1;
+int glob_speed = 1;
 
 
 // strings for display
@@ -237,7 +236,6 @@ void setup(void) {
   rightb.interval(25);
 
 
-  make_mtable();
 
 
   display.begin();
@@ -258,11 +256,6 @@ void setup(void) {
 void updateOLED(void) {
   // clear screen so we can overwrite
   display.fillScreen(ssd1351::RGB());
-  if (display_time > 30000) {
-    // timeout; blank screeen
-    display.updateScreen();
-    return;
-  }
   switch (disp_state) {
     case SHOW_TIME:
       OLED_show_time();
@@ -276,6 +269,9 @@ void updateOLED(void) {
       OLED_show_speed();
       break;
 
+    case BLANK_SCREEN:
+      // timeout; blank screeen
+    break;
   }
 
   display.updateScreen();
@@ -283,7 +279,7 @@ void updateOLED(void) {
 
 void OLED_show_time(void) {
 
-  // global time is in disp_time
+  // global time is in secs_sm
   static int max_w = -1;
 
 
@@ -312,9 +308,6 @@ void OLED_draw_frame(uint8_t r, uint8_t g, uint8_t b ) {
 }
 
 void OLED_show_zoom(void) {
-
-  // global time is in disp_time
-
 
   //display.setFont(FreeMonoBold24pt7b);
   display.setFont(FreeSansBoldOblique12pt7b);
@@ -345,25 +338,6 @@ void OLED_show_speed(void) {
 }
 
 
-void updateLEDs(int cptr) {
-  if (cptr >= CTAB_LEN) {
-    cptr = CTAB_LEN - 1;
-  }
-  if (cptr < 0) {
-    cptr = 0;
-  }
-
-  //uint32_t ccolor =  pgm_read_dword(&ctable[cptr]);
-  uint32_t ccolor =  mtable[cptr];
-  uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16]);
-  uint8_t g = pgm_read_byte(&gamma8[ccolor >> 8  & 0xFF]);
-  uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
-  //FastLED.showColor(CRGB(r,g,b));
-  FastLED.showColor(ccolor);
-  //display.fillScreen(ssd1351::RGB(r, g, b));
-  //display.updateScreen();
-
-}
 
 
 
@@ -374,6 +348,7 @@ void hypupdateLEDs(int secs, float zoom) {
   int j = 0;
   float hcent = float(cptr) / float(CTAB_LEN);
 
+  Serial.println(cptr);
   if (hcent > 1.) {
     hcent = 1.;
   }
@@ -403,10 +378,15 @@ void hypupdateLEDs(int secs, float zoom) {
 }
 
 
-int index_for_secs(long int secs) {
+int index_for_secs(int secs) {
   // return index into color table given seconds after midnight
+  Serial.print("-");
+  Serial.print(secs);
+  Serial.print("-");
+  Serial.print(secs_per_day);
+  Serial.print(">");
   float dayfrac = float(secs) / float(secs_per_day);
-  int idx = (int) floor(dayfrac * CTAB_LEN);
+  int idx = (int) (dayfrac * float(CTAB_LEN));
   if (idx >=  CTAB_LEN) {
     idx = CTAB_LEN - 1;
   }
@@ -438,32 +418,29 @@ void timestr_for_seconds(int secs) {
 
 void update_time() {
 
-  int oneday = 24 * 3600;
-  if (millis() - last_update_time >= TICK_INTERVAL) {
-    last_update_time += TICK_INTERVAL;
+  long int scaled_interval = 1000 / glob_speed;
+  if (millis() - last_update_time >= scaled_interval) {
+    last_update_time += scaled_interval;
+    //Serial.println(scaled_interval);
     secs_sm += 1;
-    if (secs_sm >  oneday) {
-      secs_sm -= oneday;
-    }
+    wrap_time();
   }
 }
 
 
-void make_mtable() {
-  int i;
-  for (i = 0; i < MTAB_LEN; i++) {
-    if ( (i >= 29) && ( i < 31)) {
-      mtable[i] = 0x00008F;
-    }
-    else {
-      mtable[i] = 0x000000;
-    }
+void wrap_time() {
+  // Keep global time within a 24 hour period
+  if (secs_sm >  secs_per_day) {
+    secs_sm -= secs_per_day;
+  }
+  else if (secs_sm <  0) {
+    secs_sm += secs_per_day;
   }
 }
 
 int ihyp_map(int o, int n, int m, float hcent, float zoom) {
-  // use this to nonlinear map into an output table of n slots from an input map of m slots.
-  // hcent is 0 < hcent < maps center of transformation. Zoom is roughly slope.
+  // use this to nonlinear map (inverse hyperbolic tangent) into an output table of n slots from an input map of m slots.
+  // hcent is 0 < hcent < 1 maps center of transformation. Zoom is roughly slope.
   // i is output element out of n.
   //  m is total number of input slots. (Range is infinite but clipped to 0 < hcent*m < m
   float eps = 0.001;
@@ -499,7 +476,6 @@ int ihyp_map(int o, int n, int m, float hcent, float zoom) {
   else if  (q < 0.) {
     return (int)(0);
   }
-
   else return ((int) floor(q));
 }
 
@@ -507,6 +483,7 @@ int ihyp_map(int o, int n, int m, float hcent, float zoom) {
 
 void loop(void) {
 
+  // increment currently displayed time
   update_time();
 
   leftb.update();
@@ -550,7 +527,7 @@ void loop(void) {
       glob_speed = MAX_SPEED;
       encr.setPos(MAX_SPEED);
     }
-    else if (glob_zoom < MIN_SPEED) {
+    else if (glob_speed < MIN_SPEED) {
       glob_speed = MIN_SPEED;
       encr.setPos(MIN_SPEED);
     }
@@ -561,23 +538,51 @@ void loop(void) {
     tdial = wheel.read();
     display_time = 0;
     disp_state = SHOW_TIME;
-    if (tdial < 0) {
-      wheel.write(0);
-      secs_sm = 0;
-    }
+    //if (tdial < 0) {
+    //  wheel.write(0);
+    //  secs_sm = 0;
+    //}
+    // change time by adding offset from dial. Scale it because it is high resolution. 
     secs_sm += glob_speed * (tdiff / 8);
+    wrap_time();
   }
 
+  
+  float zoom  = 0.5 / float(glob_zoom);
+  hypupdateLEDs(secs_sm, zoom);
 
-  //hypupdate((int)(wptr & 0xFFFF), 0.05);
-  hypupdateLEDs((int)(secs_sm & 0xFFFF), 0.05);
-
+  // timout display screen after a given number of seconds
+  if (display_time > 2500) {
+    disp_state = SHOW_TIME;
+  }
+  else if (display_time > 30000) {
+    disp_state = BLANK_SCREEN;
+  }
 
   updateOLED();
+
 }
 
 
 /*
+   Debug routines used in development...
+
+
+   // for debugging hyperbolic map
+  #define MTAB_LEN (60)
+  uint32_t mtable[MTAB_LEN];
+  void make_mtable() {
+  int i;
+  for (i = 0; i < MTAB_LEN; i++) {
+    if ( (i >= 29) && ( i < 31)) {
+      mtable[i] = 0x00008F;
+    }
+    else {
+      mtable[i] = 0x000000;
+    }
+  }
+  }
+
   int hyp_map(int i, int n, float hcent, float zoom) {
   //hyperbolic map: returns int i 0<i<n  where i is hyperbolically mapped with center at fraction c 0.< c <1.
   // and zoomed'''
