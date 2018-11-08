@@ -533,15 +533,12 @@ void loop(void) {
     }
   }
 
+  // wheel difference since last time through loop
   int tdiff = wheel.read() - tdial;
-  if (tdiff != 0) {
+  if (tdiff != 0) { // if it's changed
     tdial = wheel.read();
     display_time = 0;
     disp_state = SHOW_TIME;
-    //if (tdial < 0) {
-    //  wheel.write(0);
-    //  secs_sm = 0;
-    //}
     // change time by adding offset from dial. Scale it because it is high resolution. 
     secs_sm += glob_speed * (tdiff / 8);
     wrap_time();
