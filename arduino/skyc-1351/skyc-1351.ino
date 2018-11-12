@@ -68,14 +68,17 @@ FASTLED_USING_NAMESPACE
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
 //#define NUM_LEDS    (32+24+16+12 +8 + 1 + 10)
-#define NUM_LEDS    60
+#define TOT_LEDS        104
+#define RING_LEDS        60
+#define MID_RING_START   60
+#define MID_RING_LEN     32
+#define IN_RING_START    92
+#define IN_RING_LEN      12
 
-CRGB leds[NUM_LEDS];
+CRGB leds[TOT_LEDS];
 
 #define BRIGHTNESS          255
 #define FRAMES_PER_SECOND  120
-
-
 
 /****************************************** ENCODERS & BUTTONS********************/
 
@@ -242,8 +245,7 @@ void setup(void) {
   display.setTextSize(1);
 
   // tell FastLED about the LED strip configuration
-  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
-  //FastLED.addLeds<LED_TYPE,DATA_PIN,CLK_PIN,COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, TOT_LEDS).setCorrection(TypicalLEDStrip);
 
   // set master brightness control
   FastLED.setBrightness(BRIGHTNESS);
@@ -271,7 +273,7 @@ void updateOLED(void) {
 
     case BLANK_SCREEN:
       // timeout; blank screeen
-    break;
+      break;
   }
 
   display.updateScreen();
@@ -357,11 +359,11 @@ void hypupdateLEDs(int secs, float zoom) {
   }
 
 
-  for (int i = 0; i < NUM_LEDS; i++) {
+  for (int i = 0; i < RING_LEDS; i++) {
 
     leds[i] = CRGB(0, 0, 0);
 
-    j = ihyp_map(i, NUM_LEDS, CTAB_LEN, hcent, zoom);
+    j = ihyp_map(i, RING_LEDS, CTAB_LEN, hcent, zoom);
 
 
     uint32_t ccolor =  pgm_read_dword(&ctable[j]);
@@ -372,6 +374,21 @@ void hypupdateLEDs(int secs, float zoom) {
 
     leds[i] = CRGB(r + 1, g + 2, b + 2);
   }
+
+   CHSV hsv = rgb2hsv_approximate( leds[20] );
+
+  for (int i = MID_RING_START; i < MID_RING_START+ MID_RING_LEN; i++) {
+
+    //leds[i] = CHSV(hsv.h + 128, hsv.s, hsv.v);
+  }
+
+
+  for (int i = IN_RING_START; i < IN_RING_START + IN_RING_LEN; i++) {
+
+  //leds[i] = leds[20];
+
+  }
+
 
   FastLED.show();
 
@@ -463,6 +480,9 @@ int ihyp_map(int o, int n, int m, float hcent, float zoom) {
   }
 
 
+  // just for this piece, reverse map so dial turns things clockwise
+  hcent = 1. - hcent;
+
   float q = (zoom * 0.5 * float(m) * y) + (hcent * float(m));
 
   /*
@@ -539,12 +559,12 @@ void loop(void) {
     tdial = wheel.read();
     display_time = 0;
     disp_state = SHOW_TIME;
-    // change time by adding offset from dial. Scale it because it is high resolution. 
+    // change time by adding offset from dial. Scale it because it is high resolution.
     secs_sm += glob_speed * (tdiff / 8);
     wrap_time();
   }
 
-  
+
   float zoom  = 0.5 / float(glob_zoom);
   hypupdateLEDs(secs_sm, zoom);
 
