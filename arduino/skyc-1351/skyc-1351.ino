@@ -35,7 +35,10 @@
 #include <Arduino.h>
 
 
-#include "smallcolors.h"
+//#include "colors-119-10x.h"
+#include "colors-59-10x.h"
+//#include "smallcolors.h"
+
 //#define SECS_PER_C 1.0
 //#define CTAB_LEN 100
 
@@ -160,7 +163,7 @@ const uint8_t PROGMEM gamma8[] = {
   115, 117, 119, 120, 122, 124, 126, 127, 129, 131, 133, 135, 137, 138, 140, 142,
   144, 146, 148, 150, 152, 154, 156, 158, 160, 162, 164, 167, 169, 171, 173, 175,
   177, 180, 182, 184, 186, 189, 191, 193, 196, 198, 200, 203, 205, 208, 210, 213,
-  215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 253
+  215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 253, 254, 254
 };
 
 
@@ -350,7 +353,7 @@ void hypupdateLEDs(int secs, float zoom) {
   int j = 0;
   float hcent = float(cptr) / float(CTAB_LEN);
 
-  Serial.println(cptr);
+  //Serial.println(cptr);
   if (hcent > 1.) {
     hcent = 1.;
   }
@@ -363,21 +366,41 @@ void hypupdateLEDs(int secs, float zoom) {
 
     leds[i] = CRGB(0, 0, 0);
 
-    j = ihyp_map(i, RING_LEDS, CTAB_LEN, hcent, zoom);
+    //j = ihyp_map(i, RING_LEDS, CTAB_LEN, hcent, zoom);
+    j = ilin_map(i, RING_LEDS, CTAB_LEN, hcent, zoom);
 
+  
+    uint32_t ccolor =  (uint32_t)pgm_read_dword(&ctable[j]);
 
-    uint32_t ccolor =  pgm_read_dword(&ctable[j]);
-
-    uint8_t r = pgm_read_byte(&gamma8[ccolor >> 16 & 0xFF]);
-    uint8_t g = pgm_read_byte(&gamma8[ccolor >> 8  & 0xFF]);
+    uint8_t r = pgm_read_byte(&gamma8[(ccolor >> 16) & 0xFF]);
+    uint8_t g = pgm_read_byte(&gamma8[(ccolor >> 8)  & 0xFF]);
     uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
 
-    leds[i] = CRGB(r + 1, g + 2, b + 2);
+    //uint8_t r = pgm_read_byte(ccolor >> 16 & 0xFF);
+    //uint8_t g = pgm_read_byte(ccolor >> 8  & 0xFF);
+    //uint8_t b = pgm_read_byte(ccolor & 0xFF);
+
+    Serial.print(i);
+    Serial.print(":");
+    Serial.print(j);
+    Serial.print(">");
+    char temps[32];
+    sprintf(temps, "%x", ccolor);
+    Serial.print(temps);
+    Serial.print("=");
+    Serial.print(r);
+    Serial.print(" ");
+    Serial.print(g);
+    Serial.print(" ");
+    Serial.print(b);
+    Serial.print("\n");
+    //leds[i] = CRGB(r + 1, g + 2, b + 2);
+    leds[i] = CRGB(r, g, b);
   }
 
-   CHSV hsv = rgb2hsv_approximate( leds[20] );
+  CHSV hsv = rgb2hsv_approximate( leds[20] );
 
-  for (int i = MID_RING_START; i < MID_RING_START+ MID_RING_LEN; i++) {
+  for (int i = MID_RING_START; i < MID_RING_START + MID_RING_LEN; i++) {
 
     //leds[i] = CHSV(hsv.h + 128, hsv.s, hsv.v);
   }
@@ -385,7 +408,7 @@ void hypupdateLEDs(int secs, float zoom) {
 
   for (int i = IN_RING_START; i < IN_RING_START + IN_RING_LEN; i++) {
 
-  //leds[i] = leds[20];
+    //leds[i] = leds[20];
 
   }
 
@@ -397,11 +420,11 @@ void hypupdateLEDs(int secs, float zoom) {
 
 int index_for_secs(int secs) {
   // return index into color table given seconds after midnight
-  Serial.print("-");
-  Serial.print(secs);
-  Serial.print("-");
-  Serial.print(secs_per_day);
-  Serial.print(">");
+  //Serial.print("-");
+  //Serial.print(secs);
+  //Serial.print("-");
+  //Serial.print(secs_per_day);
+  //Serial.print(">");
   float dayfrac = float(secs) / float(secs_per_day);
   int idx = (int) (dayfrac * float(CTAB_LEN));
   if (idx >=  CTAB_LEN) {
@@ -453,6 +476,22 @@ void wrap_time() {
   else if (secs_sm <  0) {
     secs_sm += secs_per_day;
   }
+}
+
+int ilin_map(int i, int n, int m, float hcent, float zoom) {
+  // inverse linear into an output table of n slots from an input map of m slots.
+  // hcent is 0 < hcent < 1 maps center of transformation. Zoom is roughly slope.
+
+  int j = (int) (float(i)/float(n) * m*zoom);
+
+  hcent = 1. - hcent;
+  j = j + (int)(hcent*m);
+    while (j >= CTAB_LEN) {
+      j  = j -CTAB_LEN;
+    }
+
+  return (j);
+
 }
 
 int ihyp_map(int o, int n, int m, float hcent, float zoom) {
@@ -578,6 +617,11 @@ void loop(void) {
 
   updateOLED();
 
+}
+
+float mymap(float x, float in_min, float in_max, float out_min, float out_max) {
+    float y = (x - in_min)/(in_max - in_min);
+    return(y*(out_max - out_min) + out_min);
 }
 
 
