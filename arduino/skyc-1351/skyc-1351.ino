@@ -44,8 +44,6 @@
 
 
 
-
-
 #include <FastLED.h>
 #include <Encoder.h>
 //#define HALF_STEP
@@ -114,6 +112,9 @@ long int ldial = 0;
 
 Bounce leftb = Bounce(); // Instantiate a Bounce object
 Bounce rightb = Bounce(); // Instantiate a Bounce object
+
+int hyp_mode = 0; // switch between linear and hyperbolic mode
+
 
 /****************************************** OLED ********************/
 
@@ -191,15 +192,17 @@ int secs_sm = 0;
 const int secs_per_day = 3600 * 24;
 
 // global zoom (how much to expand hyperbolic zoom
-#define MAX_ZOOM 20
-#define MIN_ZOOM 1
-int glob_zoom = MIN_ZOOM;
-
+const int MIN_ZOOM = 2;
+const int MAX_ZOOM = 100;
+const float ZOOM_SCALE = 10.;
+// glob_soom is an int; divide by ZOOM_SCALE to get actual float zoom value fzoom
+long  glob_zoom = 10;
+float fzoom = 1.;
 
 // global speed (how much to speed up time and time wheel)
 #define MAX_SPEED 50
 #define MIN_SPEED 1
-int glob_speed = 1;
+int glob_speed = 7;
 
 
 // strings for display
@@ -253,6 +256,24 @@ void setup(void) {
   // set master brightness control
   FastLED.setBrightness(BRIGHTNESS);
   Serial.begin(38400);
+
+  set_defaults();
+}
+
+void set_defaults() {
+  // set default speeds and positions
+
+  // set local time to noon
+  secs_sm = secs_per_day/2;
+  tdial = secs_sm;
+  wheel.write(secs_sm);
+  
+  // set zoom to 1x
+  encl.setPos((int)ZOOM_SCALE);
+  fzoom = 1.0;
+
+  // set speed to 5x
+  encr.setPos(10);
 
 }
 
@@ -319,11 +340,15 @@ void OLED_show_zoom(void) {
   display.setTextSize(1);
 
 
-  sprintf(disp_str, "z:%ld", glob_zoom);
-
-  display.setCursor(32, 40);
   display.setTextColor(ssd1351::RGB(255, 140, 0));
+  display.setCursor(32, 40);
+  display.print("zoom:");
+
+  sprintf(disp_str, "%3.1fx", fzoom);
+
+  display.setCursor(40, 70);
   display.print(disp_str);
+
   OLED_draw_frame(0, 255, 255);
 }
 
@@ -334,19 +359,24 @@ void OLED_show_speed(void) {
   display.setFont(FreeSansBoldOblique12pt7b);
   display.setTextSize(1);
 
-  sprintf(disp_str, "s:%ld", glob_speed);
 
   display.setCursor(32, 40);
   display.setTextColor(ssd1351::RGB(255, 140, 0));
-  display.print(disp_str);
+  display.print("speed:");
+
   OLED_draw_frame(255, 0, 255);
+
+
+  display.setCursor(40, 70);
+  sprintf(disp_str, "%ldx", glob_speed);
+  display.print(disp_str);
 }
 
 
 
 
 
-void hypupdateLEDs(int secs, float zoom) {
+void updateLEDs(int secs, float zoom) {
 
   int cptr = index_for_secs(secs);
   // hyperbolically map cptr
@@ -366,34 +396,36 @@ void hypupdateLEDs(int secs, float zoom) {
 
     leds[i] = CRGB(0, 0, 0);
 
-    //j = ihyp_map(i, RING_LEDS, CTAB_LEN, hcent, zoom);
-    j = ilin_map(i, RING_LEDS, CTAB_LEN, hcent, zoom);
+    if (hyp_mode) {
+      j = ihyp_map(i, RING_LEDS, CTAB_LEN, 1. - hcent, 10 * zoom);
+    }
+    else {
+      j = ilin_map(i, RING_LEDS, CTAB_LEN, 1. - hcent, zoom);
 
-  
+    }
     uint32_t ccolor =  (uint32_t)pgm_read_dword(&ctable[j]);
 
     uint8_t r = pgm_read_byte(&gamma8[(ccolor >> 16) & 0xFF]);
     uint8_t g = pgm_read_byte(&gamma8[(ccolor >> 8)  & 0xFF]);
     uint8_t b = pgm_read_byte(&gamma8[ccolor & 0xFF]);
 
-    //uint8_t r = pgm_read_byte(ccolor >> 16 & 0xFF);
-    //uint8_t g = pgm_read_byte(ccolor >> 8  & 0xFF);
-    //uint8_t b = pgm_read_byte(ccolor & 0xFF);
+    /*
+        Serial.print(i);
+        Serial.print(":");
+        Serial.print(j);
+        Serial.print(">");
+        char temps[32];
+        sprintf(temps, "%x", ccolor);
+        Serial.print(temps);
+        Serial.print("=");
+        Serial.print(r);
+        Serial.print(" ");
+        Serial.print(g);
+        Serial.print(" ");
+        Serial.print(b);
+        Serial.print("\n");
+    */
 
-    Serial.print(i);
-    Serial.print(":");
-    Serial.print(j);
-    Serial.print(">");
-    char temps[32];
-    sprintf(temps, "%x", ccolor);
-    Serial.print(temps);
-    Serial.print("=");
-    Serial.print(r);
-    Serial.print(" ");
-    Serial.print(g);
-    Serial.print(" ");
-    Serial.print(b);
-    Serial.print("\n");
     //leds[i] = CRGB(r + 1, g + 2, b + 2);
     leds[i] = CRGB(r, g, b);
   }
@@ -401,7 +433,6 @@ void hypupdateLEDs(int secs, float zoom) {
   CHSV hsv = rgb2hsv_approximate( leds[20] );
 
   for (int i = MID_RING_START; i < MID_RING_START + MID_RING_LEN; i++) {
-
     //leds[i] = CHSV(hsv.h + 128, hsv.s, hsv.v);
   }
 
@@ -412,9 +443,7 @@ void hypupdateLEDs(int secs, float zoom) {
 
   }
 
-
   FastLED.show();
-
 }
 
 
@@ -478,20 +507,32 @@ void wrap_time() {
   }
 }
 
+float pmap(float x, float inmin, float inmax, float outmin, float outmax) {
+  // processing-like map function
+  // first map to 0-1
+  float y = (x - inmin) / (inmax - inmin);
+  // now scale to output
+  return (y * (outmax - outmin) + outmin);
+}
+
+
 int ilin_map(int i, int n, int m, float hcent, float zoom) {
-  // inverse linear into an output table of n slots from an input map of m slots.
-  // hcent is 0 < hcent < 1 maps center of transformation. Zoom is roughly slope.
+  // inverse linear map into an output table of n slots from an input map of m slots.
+  // hcent is 0 < hcent < 1 maps center of transformation.
+  // wraparound occurs. Zoom is roughly slope.
+  float y = (float(i - n / 2) / float(n)) / zoom;
 
-  int j = (int) (float(i)/float(n) * m*zoom);
+  // y is now symmetric around zero, recenter, scale to m, and clip
+  int j = (int) m * (y + hcent);
 
-  hcent = 1. - hcent;
-  j = j + (int)(hcent*m);
-    while (j >= CTAB_LEN) {
-      j  = j -CTAB_LEN;
-    }
+  if (j >= m) {
+    j = m;
+  }
+  else if (j < 0) {
+    j = 0;
+  }
 
   return (j);
-
 }
 
 int ihyp_map(int o, int n, int m, float hcent, float zoom) {
@@ -518,11 +559,8 @@ int ihyp_map(int o, int n, int m, float hcent, float zoom) {
     hcent = 1.0;
   }
 
-
-  // just for this piece, reverse map so dial turns things clockwise
-  hcent = 1. - hcent;
-
-  float q = (zoom * 0.5 * float(m) * y) + (hcent * float(m));
+  //  float q = (zoom * 0.5 * float(m) * y) + (hcent * float(m));
+  float q = (float(m) * y) / zoom + (hcent * float(m));
 
   /*
     Serial.print(" q=");
@@ -549,20 +587,19 @@ void loop(void) {
   rightb.update();
 
   if ( leftb.fell()) {
-    Serial.println("LEFTB!");
     display_time = 0;
+    // toggle between linear and hyperbolic
+    hyp_mode = 1 - hyp_mode;
+    Serial.print("hyp mode: ");
+    Serial.println(hyp_mode);
   }
 
   if ( rightb.fell()) {
-    Serial.println("rightb!");
+    Serial.println("Defaults!");
+    set_defaults();
     display_time = 0;
   }
 
-  /*
-    int ldiff = encl.read() - ldial;
-
-
-  */
 
   if (encl.change()) {
     display_time = 0;
@@ -576,6 +613,7 @@ void loop(void) {
       glob_zoom = MIN_ZOOM;
       encl.setPos(MIN_ZOOM);
     }
+    fzoom = float(glob_zoom) / ZOOM_SCALE;
   }
 
   if (encr.change()) {
@@ -604,8 +642,7 @@ void loop(void) {
   }
 
 
-  float zoom  = 0.5 / float(glob_zoom);
-  hypupdateLEDs(secs_sm, zoom);
+  updateLEDs(secs_sm, fzoom);
 
   // timout display screen after a given number of seconds
   if (display_time > 2500) {
@@ -620,8 +657,8 @@ void loop(void) {
 }
 
 float mymap(float x, float in_min, float in_max, float out_min, float out_max) {
-    float y = (x - in_min)/(in_max - in_min);
-    return(y*(out_max - out_min) + out_min);
+  float y = (x - in_min) / (in_max - in_min);
+  return (y * (out_max - out_min) + out_min);
 }
 
 
@@ -644,49 +681,6 @@ float mymap(float x, float in_min, float in_max, float out_min, float out_max) {
   }
   }
 
-  int hyp_map(int i, int n, float hcent, float zoom) {
-  //hyperbolic map: returns int i 0<i<n  where i is hyperbolically mapped with center at fraction c 0.< c <1.
-  // and zoomed'''
 
-  float x = zoom * ((float(i) / n - 0.5) + (0.5 - hcent) );
-  float y = (exp(2 * x) - 1) / (exp(2 * x) + 1 );
-  // y is now -1<0<1, map to 0-> and scale n
-
-  return int((y + 1) * (n / 2. - 1));
-  }
-
-  void hypupdate( int mptr, float zoom) {
-
-  // hyperbolically map cptr
-  int j = 0;
-
-  float hcent = float(mptr) / float(MTAB_LEN);
-
-  if (hcent > 1.) {
-    hcent = 1.;
-  }
-  else if (hcent < 0.0) {
-    hcent = 0.;
-  }
-
-
-
-  for (int i = 0; i < MTAB_LEN; i++) {
-    j = ihyp_map( i, MTAB_LEN, MTAB_LEN, hcent, zoom);
-
-    if (j >= 0) {
-      uint32_t ccolor =  mtable[j];
-      if (ccolor) {
-        Serial.write('x');
-      }
-      else {
-        Serial.write('-');
-      }
-
-    }
-  }
-  Serial.println("");
-
-  }
 
 */
