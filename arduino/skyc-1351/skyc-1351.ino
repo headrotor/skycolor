@@ -264,10 +264,10 @@ void set_defaults() {
   // set default speeds and positions
 
   // set local time to noon
-  secs_sm = secs_per_day/2;
+  secs_sm = secs_per_day / 2;
   tdial = secs_sm;
   wheel.write(secs_sm);
-  
+
   // set zoom to 1x
   encl.setPos((int)ZOOM_SCALE);
   fzoom = 1.0;
@@ -394,13 +394,16 @@ void updateLEDs(int secs, float zoom) {
 
   for (int i = 0; i < RING_LEDS; i++) {
 
+
+  
     leds[i] = CRGB(0, 0, 0);
 
+    // reverse map so clockwise when looking from front
     if (hyp_mode) {
-      j = ihyp_map(i, RING_LEDS, CTAB_LEN, 1. - hcent, 10 * zoom);
+      j = ihyp_map(RING_LEDS - i -1, RING_LEDS, CTAB_LEN, hcent, 10 * zoom);
     }
     else {
-      j = ilin_map(i, RING_LEDS, CTAB_LEN, 1. - hcent, zoom);
+      j = ilin_map(RING_LEDS - i -1, RING_LEDS, CTAB_LEN, hcent, zoom);
 
     }
     uint32_t ccolor =  (uint32_t)pgm_read_dword(&ctable[j]);
