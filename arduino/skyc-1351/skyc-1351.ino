@@ -249,7 +249,7 @@ void setup(void) {
 
   display.begin();
   display.setTextSize(1);
-
+  //display.Rotation(2);
   // tell FastLED about the LED strip configuration
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, TOT_LEDS).setCorrection(TypicalLEDStrip);
 
@@ -272,8 +272,8 @@ void set_defaults() {
   encl.setPos((int)ZOOM_SCALE);
   fzoom = 1.0;
 
-  // set speed to 5x
-  encr.setPos(10);
+  // set speed to 2x
+  encr.setPos(2);
 
 }
 
@@ -437,6 +437,7 @@ void updateLEDs(int secs, float zoom) {
 
   for (int i = MID_RING_START; i < MID_RING_START + MID_RING_LEN; i++) {
     //leds[i] = CHSV(hsv.h + 128, hsv.s, hsv.v);
+    leds[i] = leds[30];
   }
 
 
